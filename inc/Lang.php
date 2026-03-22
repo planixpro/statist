@@ -19,6 +19,7 @@ class Lang
     private const NAMES = [
         'en' => 'English',
         'ru' => 'Русский',
+        'bg' => 'Български',		
         'de' => 'Deutsch',
         'es' => 'Español',
         'fr' => 'Français',
