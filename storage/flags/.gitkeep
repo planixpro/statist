@@ -1,0 +1,4 @@
+Place your flag files here as {iso2}.webp (lowercase).
+Examples: de.webp, us.webp, ru.webp, gb.webp, fr.webp, cn.webp
+Language codes map: en→gb, zh→cn, ja→jp, ko→kr, ar→sa, uk→ua
+See inc/flags.php for the full mapping.

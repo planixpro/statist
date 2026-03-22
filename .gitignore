@@ -1,0 +1,24 @@
+# Database config — NEVER commit credentials
+inc/db.php
+inc/config.php
+
+# Geo database (large binary, user downloads separately)
+storage/geo/*.mmdb
+
+# Logs
+storage/logs/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+-e 
+# Installer lock
+storage/installed.lock
+
+# Flag images — add your own .webp files to storage/flags/
+# Named by ISO 3166-1 alpha-2 lowercase: de.webp, us.webp, ru.webp, etc.
+# Language → flag mapping: en→gb, zh→cn, ja→jp, ko→kr (see inc/flags.php)
+storage/flags/*.webp
