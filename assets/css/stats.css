@@ -1,0 +1,88 @@
+/* ── Stats detail page ───────────────────────────────────────────── */
+
+.stats-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: none;
+  margin-bottom: 16px;
+  transition: color 0.12s;
+}
+.stats-back:hover { color: var(--accent); }
+
+/* ── Type navigation ── */
+.stats-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.stats-tab {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  transition: all 0.13s;
+  white-space: nowrap;
+}
+.stats-tab:hover {
+  color: var(--text);
+  border-color: var(--border2);
+  background: var(--bg);
+}
+.stats-tab.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-l);
+  font-weight: 600;
+}
+
+/* ── Stats table ── */
+.stats-tbl td { vertical-align: middle; }
+.stats-tbl tbody tr:hover td { background: var(--bg); }
+
+/* ── Bar track in table ── */
+.stats-tbl .bar-track {
+  min-width: 80px;
+  height: 4px;
+}
+
+/* ── Referrer link ── */
+.stats-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 13px;
+}
+.stats-link:hover { text-decoration: underline; }
+
+/* ── Responsive ── */
+@media (max-width: 600px) {
+  .stats-tabs { gap: 3px; }
+  .stats-tab  { padding: 5px 10px; font-size: 11px; }
+  .stats-tbl th:nth-child(3), .stats-tbl td:nth-child(3) { display: none; }
+}
+
+/* ── Row icons ── */
+.stats-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+.stats-icon svg { display: block; }
+
+.stats-icon-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  vertical-align: middle;
+}

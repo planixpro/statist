@@ -1,113 +1,213 @@
-(function(){
+(function () {
 
-if(window.__STATIST_TRACKER__) return;
-window.__STATIST_TRACKER__ = true;
+  if (window.__STATIST_TRACKER__) return;
+  window.__STATIST_TRACKER__ = true;
 
-const ENDPOINT = "https://your-statist-domain.com/";
+  const ENDPOINT    = "https://your-site.com/";
+  const SESSION_KEY = "statist_sid";
 
-const SESSION_KEY = "statist_sid";
+  /* --------------------------
+     Utils
+  -------------------------- */
 
-function uuid(){
-return crypto.randomUUID();
-}
+  function generateId() {
+    // crypto.randomUUID() требует HTTPS или localhost.
+    // Фолбэк работает везде.
+    if (
+      typeof crypto !== "undefined" &&
+      typeof crypto.randomUUID === "function"
+    ) {
+      try { return crypto.randomUUID(); } catch (_) {}
+    }
+    // Fallback: Math.random UUID v4
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+      var r = (Math.random() * 16) | 0;
+      return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+    });
+  }
 
-let sid;
+  function storageGet(key) {
+    try { return localStorage.getItem(key); } catch (_) { return null; }
+  }
 
-try{
+  function storageSet(key, val) {
+    try { localStorage.setItem(key, val); } catch (_) {}
+  }
 
-sid = localStorage.getItem(SESSION_KEY);
+  /* --------------------------
+     Session ID
+  -------------------------- */
 
-if(!sid){
-sid = uuid();
-localStorage.setItem(SESSION_KEY,sid);
-}
+  var sid = storageGet(SESSION_KEY);
+  if (!sid) {
+    sid = generateId();
+    storageSet(SESSION_KEY, sid);
+  }
 
-}catch(e){
+  /* --------------------------
+     Client-side bot pre-filter
+  -------------------------- */
 
-sid = uuid();
+  function isLikelyBot() {
+    // Selenium / Puppeteer / Playwright
+    if (navigator.webdriver) return true;
 
-}
+    // Нет языка
+    if (!navigator.language) return true;
 
-function send(event,extra={}){
+    // Нет размеров окна
+    if (!window.innerWidth || !window.innerHeight) return true;
 
-const payload = {
+    // Нет timezone
+    try {
+      if (!Intl.DateTimeFormat().resolvedOptions().timeZone) return true;
+    } catch (_) {
+      return true;
+    }
 
-js:1,
+    return false;
+  }
 
-ev:event,
+  if (isLikelyBot()) return;
 
-sid:sid,
+  /* --------------------------
+     Fingerprint
+     navigator.platform устарел — используем userAgentData если есть,
+     иначе platform как запасной вариант.
+  -------------------------- */
 
-h:location.hostname,
+  var platformHint = "";
+  try {
+    platformHint =
+      (navigator.userAgentData && navigator.userAgentData.platform) ||
+      navigator.platform ||
+      "";
+  } catch (_) {}
 
-p:location.pathname,
+  var fp = [
+    platformHint,
+    navigator.hardwareConcurrency || 0,
+    navigator.language,
+    screen.width + "x" + screen.height,   // физический экран, не viewport
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+  ].join("|");
 
-query:location.search,
+  /* --------------------------
+     Visibility tracking
+     (исправлено: visible обновляется динамически)
+  -------------------------- */
 
-r:document.referrer,
+  var isVisible = document.visibilityState === "visible";
 
-s:window.innerWidth+"x"+window.innerHeight,
+  document.addEventListener("visibilitychange", function () {
+    isVisible = document.visibilityState === "visible";
+  });
 
-l:navigator.language,
+  /* --------------------------
+     Interaction tracking
+  -------------------------- */
 
-tz:Intl.DateTimeFormat().resolvedOptions().timeZone,
+  var interacted = false;
 
-...extra
+  function markInteraction() {
+    interacted = true;
+  }
 
-};
+  document.addEventListener("click",     markInteraction, { passive: true });
+  document.addEventListener("scroll",    markInteraction, { passive: true });
+  document.addEventListener("keydown",   markInteraction, { passive: true });
+  document.addEventListener("mousemove", markInteraction, { passive: true, once: true });
+  document.addEventListener("touchstart",markInteraction, { passive: true, once: true });
 
-fetch(ENDPOINT,{
+  /* --------------------------
+     Send
+  -------------------------- */
 
-method:"POST",
+  function send(event, extra) {
+    var payload = Object.assign(
+      {
+        js:    1,
+        ev:    event,
+        sid:   sid,
+        h:     location.hostname,
+        p:     location.pathname,
+        query: location.search,
+        r:     document.referrer,
+        // viewport для совместимости с серверной проверкой isBadScreen
+        s:     window.innerWidth + "x" + window.innerHeight,
+        l:     navigator.language,
+        tz:    Intl.DateTimeFormat().resolvedOptions().timeZone,
+        fp:    fp,
+      },
+      extra || {}
+    );
 
-headers:{
-"Content-Type":"application/json"
-},
+    try {
+      fetch(ENDPOINT, {
+        method:    "POST",
+        headers:   { "Content-Type": "application/json" },
+        body:      JSON.stringify(payload),
+        keepalive: true,
+      }).catch(function () {});
+    } catch (_) {}
+  }
 
-body:JSON.stringify(payload),
+  /* --------------------------
+     Page view
+     Задержка 300мс — боты обычно
+     не ждут и не исполняют таймеры.
+  -------------------------- */
 
-keepalive:true
+  setTimeout(function () {
+    if (!isVisible) return;
+    send("page_view");
+  }, 300);
 
-}).catch(()=>{});
+  /* --------------------------
+     Heartbeat
+     Отправляется через 7 сек если:
+     - вкладка видима
+     - было хоть какое-то взаимодействие ИЛИ прошло достаточно времени
+       (пользователь читает статью не скроля)
 
-}
+     Логика: mousemove/touchstart помечают interacted при любом движении мыши,
+     поэтому реальные читатели обычно попадут сюда.
+     Второй heartbeat через 30 сек — без условия interacted,
+     чтобы поймать статичных читателей.
+  -------------------------- */
 
-/* page view */
+  setTimeout(function () {
+    if (document.visibilityState !== "visible") return;
+    if (!interacted) return;
+    send("heartbeat");
+  }, 7000);
 
-send("page_view");
+  // Второй heartbeat для читателей без скролла
+  setTimeout(function () {
+    if (document.visibilityState !== "visible") return;
+    send("heartbeat");
+  }, 30000);
 
-/* heartbeat */
+  /* --------------------------
+     Clicks с атрибутом data-statist-click
+  -------------------------- */
 
-setTimeout(()=>{
+  document.addEventListener("click", function (e) {
+    var el = e.target && e.target.closest
+      ? e.target.closest("[data-statist-click]")
+      : null;
+    if (!el) return;
+    send("click", { target: el.getAttribute("data-statist-click") });
+  });
 
-send("heartbeat");
+  /* --------------------------
+     Session end
+  -------------------------- */
 
-},5000);
-
-/* clicks */
-
-document.addEventListener("click",e=>{
-
-const el = e.target.closest("[data-statist-click]");
-
-if(!el) return;
-
-send("click",{
-target:el.getAttribute("data-statist-click")
-});
-
-});
-
-/* session end */
-
-document.addEventListener("visibilitychange",()=>{
-
-if(document.visibilityState==="hidden"){
-
-send("session_end");
-
-}
-
-});
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState !== "hidden") return;
+    if (!interacted) return;
+    send("session_end");
+  });
 
 })();
