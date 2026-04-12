@@ -1,0 +1,196 @@
+/* ── Chart ── */
+.chart-wrap {
+  position: relative;
+  height: 180px;
+}
+
+/* ── Country filter items ── */
+.country-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  text-decoration: none;
+  color: inherit;
+  font-size: 13px;
+}
+.country-item:last-child {
+  border-bottom: none;
+}
+.country-item:hover {
+  background: var(--bg);
+  border-color: var(--border2);
+}
+.country-item.active {
+  background: var(--accent-l);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.country-item-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.country-item-cnt {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+.country-item.active .country-item-cnt {
+  color: var(--accent);
+}
+
+/* ── Active country chip ── */
+.country-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 8px;
+  background: var(--accent-l);
+  border: 1px solid var(--accent);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  text-decoration: none;
+}
+.country-chip-x {
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.6;
+}
+.country-chip:hover .country-chip-x {
+  opacity: 1;
+}
+
+/* ── Card header with "more" link ── */
+.card-header-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.card-more {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 2px 6px;
+  border-radius: 5px;
+  transition: color 0.12s, background 0.12s;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.card-more:hover {
+  color: var(--accent);
+  background: var(--accent-l);
+}
+
+/* ── Sessions card header (единственная версия) ── */
+.sessions-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  text-transform: uppercase;
+  flex-wrap: wrap;
+}
+
+/* ── Sessions counters ── */
+.sess-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--accent-l);
+  color: var(--accent);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.sess-tab-counter {
+  margin-left: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 400;
+}
+
+/* ── Bot pill ── */
+.bot-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  background: #fff0f0;
+  color: var(--danger);
+  border: 1px solid #ffc9c9;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+/* ── Icons ── */
+.icon-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.icon-svg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  vertical-align: middle;
+}
+.icon-svg svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+/* ── Top pages: title + path ── */
+.bar-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.page-title {
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.page-path {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

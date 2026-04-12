@@ -2,18 +2,21 @@
 /**
  * Flag helper — safe for multiple includes.
  *
- * Flags: /storage/flags/{iso2}.webp  (lowercase ISO 3166-1 alpha-2)
- * Usage: flag_img('DE'), flag_img('en', 'English', '18px')
+ * Flags: /storage/flags/{iso2}.webp
  */
 
 if (!function_exists('flag_iso')) {
 
-    // Language code → country flag (only codes that differ from country ISO)
     function _flag_map(): array {
         return [
-            'en' => 'gb', 'zh' => 'cn', 'ja' => 'jp',
-            'ko' => 'kr', 'ar' => 'sa', 'he' => 'il',
-            'uk' => 'ua', 'be' => 'by',
+            'en' => 'gb',
+            'zh' => 'cn',
+            'ja' => 'jp',
+            'ko' => 'kr',
+            'ar' => 'sa',
+            'he' => 'il',
+            'uk' => 'ua',
+            'be' => 'by',
         ];
     }
 
@@ -23,32 +26,52 @@ if (!function_exists('flag_iso')) {
         return $map[$code] ?? $code;
     }
 
-    function flag_exists(string $code): bool {
-        $file = dirname(__DIR__) . '/storage/flags/' . flag_iso($code) . '.webp';
-        return $file !== '' && file_exists($file);
+    function _flag_base_path(): string {
+        static $path = null;
+        if ($path === null) {
+            $path = dirname(__DIR__) . '/storage/flags/';
+        }
+        return $path;
     }
 
-    function flag_url(string $code): string {
-        return '/storage/flags/' . flag_iso($code) . '.webp';
+    function flag_exists(string $iso): bool {
+        static $cache = [];
+
+        if (isset($cache[$iso])) {
+            return $cache[$iso];
+        }
+
+        $file = _flag_base_path() . $iso . '.webp';
+        return $cache[$iso] = file_exists($file);
+    }
+
+    function flag_url(string $iso): string {
+        return '/storage/flags/' . $iso . '.webp';
     }
 
     /**
-     * Returns <img> if flag file exists, otherwise <span>XX</span> fallback.
+     * Returns <img> if flag file exists, otherwise <span>XX</span>
      */
     function flag_img(string $code, string $label = '', string $size = '20px'): string {
-        if ($code === '' || $code === null) return '';
+        if ($code === '' || $code === null) {
+            return '';
+        }
 
-        $iso   = flag_iso($code);
-        $alt   = htmlspecialchars($label ?: strtoupper($iso));
+        $iso = flag_iso($code);
+        $alt = htmlspecialchars($label ?: strtoupper($iso), ENT_QUOTES, 'UTF-8');
 
-        if (flag_exists($code)) {
-            $url = htmlspecialchars(flag_url($code));
+        if (flag_exists($iso)) {
+            $url = htmlspecialchars(flag_url($iso), ENT_QUOTES, 'UTF-8');
+
             return sprintf(
                 '<img src="%s" alt="%s" title="%s" '
                 . 'style="width:%s;height:auto;border-radius:2px;'
                 . 'vertical-align:middle;flex-shrink:0;display:inline-block" '
                 . 'loading="lazy">',
-                $url, $alt, $alt, $size
+                $url,
+                $alt,
+                $alt,
+                $size
             );
         }
 
@@ -58,7 +81,8 @@ if (!function_exists('flag_iso')) {
             . 'border:1px solid var(--border);border-radius:3px;'
             . 'padding:1px 4px;vertical-align:middle;flex-shrink:0;'
             . 'display:inline-block">%s</span>',
-            $alt, htmlspecialchars(strtoupper($iso))
+            $alt,
+            htmlspecialchars(strtoupper($iso), ENT_QUOTES, 'UTF-8')
         );
     }
 

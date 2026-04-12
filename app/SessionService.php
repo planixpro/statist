@@ -4,7 +4,7 @@ require_once __DIR__ . '/../app/BotDetector.php';
 
 class SessionService
 {
-    private PDO    $pdo;
+    private PDO $pdo;
     private string $logFile;
 
     public function __construct(PDO $pdo)
@@ -13,39 +13,52 @@ class SessionService
         $this->logFile = __DIR__ . '/../storage/logs/statist.log';
     }
 
-    // -------------------------------------------------------
-
     public function track(array $data): void
     {
-        $domain = $data['site']       ?? null;
-        $sid    = $data['session_id'] ?? null;
-        $event  = $data['event']      ?? 'page_view';
+        $domain = trim((string)($data['site']       ?? ''));
+        $sid    = trim((string)($data['session_id'] ?? ''));
+        $event  = trim((string)($data['event']      ?? 'page_view'));
+        $ip     = trim((string)($data['ip']         ?? ''));
 
-        $this->log("track() domain=$domain sid=$sid event=$event");
+        $this->log("track() domain={$domain} sid={$sid} event={$event} ip={$ip}");
 
-        if (!$domain || !$sid) {
-            $this->log("track() aborted — missing domain or sid");
+        if ($domain === '' || $sid === '') {
+            $this->log("track() aborted: missing domain or sid");
             return;
         }
 
-        $siteId    = $this->resolveSiteId($domain);
-        $heartbeat = ($event === 'heartbeat') ? 1 : 0;
+        $siteId = $this->resolveSiteId($domain);
 
-        $this->log("siteId=$siteId heartbeat=$heartbeat");
-
-        $this->upsertSession($siteId, $sid, $data, $heartbeat);
-
-        // On session_end — run suspicious-session check and flag if needed
-        if ($event === 'session_end') {
-            $this->evaluateBotFlag($siteId, $sid);
+        // --- блокировки ---
+        if ($ip !== '' && $this->isIpBlocked($ip)) {
+            $this->log("track() blocked by IP blacklist ip={$ip}");
+            $this->upsertBlockedSession($siteId, $sid, $data, 'blocked_ip');
+            return;
         }
+
+        if ($this->isAsnBlocked($data)) {
+            $this->log("track() blocked by ASN blacklist sid={$sid}");
+            $this->upsertBlockedSession($siteId, $sid, $data, 'blocked_asn');
+            return;
+        }
+
+        if (BotDetector::shouldBlockRealtime($data)) {
+            $this->log("track() realtime blocked sid={$sid}");
+            $this->upsertBlockedSession($siteId, $sid, $data, 'realtime_bot');
+            $this->autoBlockIpIfNeeded($ip, 'realtime_bot');
+            return;
+        }
+
+        // --- основная логика ---
+        $this->upsertSession($siteId, $sid, $data);
 
         if ($event !== 'heartbeat') {
             $this->insertEvent($siteId, $sid, $event, $data);
+            $this->incrementEvents($siteId, $sid);
         }
-    }
 
-    // -------------------------------------------------------
+        $this->evaluateSession($siteId, $sid, $data);
+    }
 
     private function resolveSiteId(string $domain): int
     {
@@ -54,29 +67,47 @@ class SessionService
         $id = $stmt->fetchColumn();
 
         if ($id !== false) {
-            return (int) $id;
+            return (int)$id;
         }
 
         $stmt = $this->pdo->prepare("INSERT INTO sites (domain, name) VALUES (?, ?)");
         $stmt->execute([$domain, $domain]);
-        $newId = (int) $this->pdo->lastInsertId();
+        $newId = (int)$this->pdo->lastInsertId();
 
-        $this->log("resolveSiteId — created new site id=$newId for domain=$domain");
-
+        $this->log("resolveSiteId created site id={$newId} domain={$domain}");
         return $newId;
     }
 
-    // -------------------------------------------------------
-
-    private function upsertSession(
-        int    $siteId,
-        string $sid,
-        array  $data,
-        int    $heartbeat
-    ): void {
+    private function upsertSession(int $siteId, string $sid, array $data): void
+    {
         $now = date('Y-m-d H:i:s');
 
-        $params = [
+        $stmt = $this->pdo->prepare("
+            INSERT INTO sessions
+                (site_id, session_id, ip, country, country_code, city,
+                 referrer, user_agent, screen, language, timezone,
+                 started_at, last_activity,
+                 is_valid, is_bot, bot_score, is_suspicious, blocked_reason,
+                 events_count, is_active, ended_at)
+            VALUES
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                 0, 0, 0, 0, NULL,
+                 0, 1, NULL)
+            ON DUPLICATE KEY UPDATE
+                last_activity = VALUES(last_activity),
+                is_active     = 1,
+                ended_at      = NULL,
+                referrer      = COALESCE(NULLIF(VALUES(referrer), ''),      referrer),
+                user_agent    = COALESCE(NULLIF(VALUES(user_agent), ''),    user_agent),
+                screen        = COALESCE(NULLIF(VALUES(screen), ''),        screen),
+                language      = COALESCE(NULLIF(VALUES(language), ''),      language),
+                timezone      = COALESCE(NULLIF(VALUES(timezone), ''),      timezone),
+                country       = COALESCE(NULLIF(VALUES(country), ''),       country),
+                country_code  = COALESCE(NULLIF(VALUES(country_code), ''), country_code),
+                city          = COALESCE(NULLIF(VALUES(city), ''),          city)
+        ");
+
+        $stmt->execute([
             $siteId,
             $sid,
             $data['ip']           ?? null,
@@ -88,89 +119,173 @@ class SessionService
             $data['screen']       ?? null,
             $data['lang']         ?? null,
             $data['tz']           ?? null,
-            $now,        // started_at
-            $now,        // last_activity (INSERT)
-            $heartbeat,  // is_valid
-            $now,        // last_activity (UPDATE)
-            $heartbeat,  // IF(? = 1 ...) в UPDATE
-        ];
-
-        $stmt = $this->pdo->prepare("
-            INSERT INTO sessions
-                (site_id, session_id, ip, country, country_code, city,
-                 referrer, user_agent, screen, language, timezone,
-                 started_at, last_activity, is_valid)
-            VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE
-                last_activity = ?,
-                is_valid      = IF(? = 1, 1, is_valid)
-        ");
-
-        $stmt->execute($params);
-
-        $this->log("upsertSession rowCount=" . $stmt->rowCount());
+            $now,
+            $now,
+        ]);
     }
 
-    // -------------------------------------------------------
-    // Bot flagging — runs after session_end event
-    // -------------------------------------------------------
-
-    private function evaluateBotFlag(int $siteId, string $sid): void
+    private function insertEvent(int $siteId, string $sid, string $event, array $data): void
     {
         $stmt = $this->pdo->prepare("
-            SELECT started_at, last_activity, is_valid, ip
-            FROM sessions
-            WHERE site_id = ? AND session_id = ?
-            LIMIT 1
+            INSERT INTO events (site_id, session_id, event_type, path, query, title, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         ");
-        $stmt->execute([$siteId, $sid]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!$row) {
-            return;
+        $title = trim((string)($data['title'] ?? ''));
+
+        if ($title !== '') {
+            $title = preg_replace('/\s+/u', ' ', $title);
+            $title = mb_substr($title, 0, 255);
+        } else {
+            $title = null;
         }
 
-        if (BotDetector::isSuspiciousSession($row)) {
-            $upd = $this->pdo->prepare("
-                UPDATE sessions SET is_bot = 1
-                WHERE site_id = ? AND session_id = ?
-            ");
-            $upd->execute([$siteId, $sid]);
-            $this->log("evaluateBotFlag — flagged as bot: sid=$sid");
-        }
-    }
-
-    // -------------------------------------------------------
-
-    private function insertEvent(
-        int    $siteId,
-        string $sid,
-        string $event,
-        array  $data
-    ): void {
-        $params = [
+        $stmt->execute([
             $siteId,
             $sid,
             $event,
             $data['path']  ?? '/',
             $data['query'] ?? '',
+            $title,
             date('Y-m-d H:i:s'),
-        ];
-
-        $stmt = $this->pdo->prepare("
-            INSERT INTO events
-                (site_id, session_id, event_type, path, query, created_at)
-            VALUES
-                (?, ?, ?, ?, ?, ?)
-        ");
-
-        $stmt->execute($params);
-
-        $this->log("insertEvent event=$event rowCount=" . $stmt->rowCount());
+        ]);
     }
 
-    // -------------------------------------------------------
+    private function incrementEvents(int $siteId, string $sid): void
+    {
+        $this->pdo->prepare("
+            UPDATE sessions
+            SET events_count = events_count + 1
+            WHERE site_id = ? AND session_id = ?
+        ")->execute([$siteId, $sid]);
+    }
+
+    private function evaluateSession(int $siteId, string $sid, array $data): void
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT * FROM sessions
+            WHERE site_id = ? AND session_id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$siteId, $sid]);
+        $session = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$session) return;
+
+        $started  = strtotime($session['started_at']);
+        $last     = strtotime($session['last_activity']);
+        $duration = max(0, $last - $started);
+        $events   = (int)$session['events_count'];
+        $ip       = $session['ip'] ?? '';
+
+        // --- TTL (смерть сессии) ---
+        $inactive = time() - $last;
+
+        if ($inactive > 60 && (int)$session['is_active'] === 1) {
+            $this->pdo->prepare("
+                UPDATE sessions
+                SET is_active = 0,
+                    ended_at = NOW()
+                WHERE site_id = ? AND session_id = ?
+            ")->execute([$siteId, $sid]);
+
+            $this->log("session_end sid={$sid} inactive={$inactive}");
+        }
+
+        // --- Bot scoring ---
+        $ctx = [
+            'ua'           => $session['user_agent'] ?? '',
+            'path'         => $data['path'] ?? '',
+            'referrer'     => $session['referrer'] ?? '',
+            'fp'           => $data['fp'] ?? '',
+            'screen'       => $session['screen'] ?? '',
+            'js'           => (int)($data['js'] ?? 0),
+            'events_count' => $events,
+            'duration'     => $duration,
+            'provider'     => $data['provider'] ?? '',
+        ];
+
+        $score = BotDetector::score($ctx);
+        $class = BotDetector::classify($score);
+
+        $isBot        = ($class === 'bot') ? 1 : 0;
+        $isSuspicious = ($class === 'suspicious') ? 1 : 0;
+
+        $isValid = 0;
+        if ($isBot === 0) {
+            $isValid = ($events >= 2 || $duration >= 5) ? 1 : 0;
+        }
+
+        $reason = $isBot ? 'bot_score' : ($isSuspicious ? 'suspicious_score' : null);
+
+        $this->pdo->prepare("
+            UPDATE sessions
+            SET is_bot        = ?,
+                is_valid      = ?,
+                bot_score     = ?,
+                is_suspicious = ?,
+                blocked_reason = ?
+            WHERE site_id = ? AND session_id = ?
+        ")->execute([$isBot, $isValid, $score, $isSuspicious, $reason, $siteId, $sid]);
+
+        if ($isBot) {
+            $this->autoBlockIpIfNeeded($ip, 'bot_score');
+        }
+
+        $this->log("evaluateSession sid={$sid} score={$score} duration={$duration} events={$events}");
+    }
+
+    private function autoBlockIpIfNeeded(string $ip, string $reason): void
+    {
+        if ($ip === '' || $this->isIpBlocked($ip)) return;
+
+        $stmt = $this->pdo->prepare("
+            SELECT COUNT(*)
+            FROM sessions
+            WHERE ip = ?
+              AND is_bot = 1
+              AND started_at >= DATE_SUB(NOW(), INTERVAL 3 DAY)
+        ");
+        $stmt->execute([$ip]);
+        $badCount = (int)$stmt->fetchColumn();
+
+        if ($badCount >= 10) {
+            $this->pdo->prepare("
+                INSERT INTO blocked_ips (ip, reason, source, is_active)
+                VALUES (?, ?, 'auto', 1)
+                ON DUPLICATE KEY UPDATE is_active = 1
+            ")->execute([$ip, $reason]);
+
+            $this->log("autoBlockIp blocked ip={$ip}");
+        }
+    }
+
+    private function isIpBlocked(string $ip): bool
+    {
+        if ($ip === '') return false;
+
+        $stmt = $this->pdo->prepare("
+            SELECT 1 FROM blocked_ips
+            WHERE ip = ? AND is_active = 1
+            LIMIT 1
+        ");
+        $stmt->execute([$ip]);
+        return (bool)$stmt->fetchColumn();
+    }
+
+    private function isAsnBlocked(array $data): bool
+    {
+        $asn = trim((string)($data['asn'] ?? ''));
+        if ($asn === '') return false;
+
+        $stmt = $this->pdo->prepare("
+            SELECT 1 FROM blocked_asns
+            WHERE asn = ? AND is_active = 1
+            LIMIT 1
+        ");
+        $stmt->execute([$asn]);
+        return (bool)$stmt->fetchColumn();
+    }
 
     private function log(string $msg): void
     {
@@ -178,6 +293,7 @@ class SessionService
         if (!is_dir($dir)) {
             mkdir($dir, 0755, true);
         }
+
         file_put_contents(
             $this->logFile,
             date('Y-m-d H:i:s') . ' ' . $msg . PHP_EOL,

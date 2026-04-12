@@ -1,0 +1,254 @@
+/* ── Stats detail page ───────────────────────────────────────────── */
+
+.stats-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: none;
+  margin-bottom: 16px;
+  transition: color 0.12s;
+}
+
+.stats-back:hover {
+  color: var(--accent);
+}
+
+/* ── Tabs ───────────────────────────────────────────────────────── */
+
+.stats-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.stats-tab {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  transition: all 0.13s;
+  white-space: nowrap;
+}
+
+.stats-tab:hover {
+  color: var(--text);
+  border-color: var(--border2);
+  background: var(--bg);
+}
+
+.stats-tab.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-l);
+  font-weight: 600;
+}
+
+/* ── Body ───────────────────────────────────────────────────────── */
+
+.stats-body {
+  padding: 0;
+}
+
+.stats-empty {
+  padding: 32px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ── Table ─────────────────────────────────────────────────────── */
+
+.stats-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.stats-tbl th {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+  text-align: left;
+}
+
+.stats-tbl td {
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+.stats-tbl tbody tr:hover td {
+  background: var(--bg);
+}
+
+/* ── Columns ───────────────────────────────────────────────────── */
+
+.stats-col-num {
+  width: 44px;
+  text-align: right;
+  padding-right: 10px;
+}
+
+.stats-col-share {
+  width: 34%;
+}
+
+.stats-col-count {
+  width: 90px;
+}
+
+/* ── Cells ─────────────────────────────────────────────────────── */
+
+.stats-cell-ellipsis {
+  overflow: hidden;
+}
+
+.stats-main-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.tar {
+  text-align: right;
+}
+
+/* ── Row layout ─────────────────────────────────────────────────── */
+
+.stats-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+/* ── Pages (title + path) ───────────────────────────────────────── */
+
+.stats-page {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.stats-page-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-page-path {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Referrer ─────────────────────────────────────────────────── */
+
+.stats-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-link:hover {
+  text-decoration: underline;
+}
+
+/* ── Bars ───────────────────────────────────────────────────────── */
+
+.stats-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bar-track {
+  flex: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+}
+
+.stats-bar-pct {
+  width: 36px;
+  text-align: right;
+  font-size: 11px;
+}
+
+/* ── Icons ─────────────────────────────────────────────────────── */
+
+.stats-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.stats-icon-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Header meta ───────────────────────────────────────────────── */
+
+.stats-total {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* ── Responsive ───────────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+
+  .stats-tab {
+    padding: 5px 10px;
+    font-size: 11px;
+  }
+
+  .stats-col-share {
+    width: auto;
+  }
+
+  .stats-col-count {
+    width: 70px;
+  }
+
+  .stats-tbl th:nth-child(3),
+  .stats-tbl td:nth-child(3) {
+    display: none;
+  }
+
+}

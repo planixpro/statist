@@ -1,23 +1,20 @@
 RewriteEngine On
 
-# Tracker — serve directly
 RewriteRule ^tracker\.js$ tracker.js [L]
+RewriteRule ^install\.php$ install.php [L]
+RewriteRule ^storage/flags/[a-z]{2}(-[a-z]+)?\.webp$ - [L]
+RewriteRule ^assets/ - [L]
+RewriteRule ^storage/ - [L]
 
-# Installer — serve directly (deleted after install)
-RewriteRule ^install.php$ install.php [L]
-
-# Flags — serve static .webp files directly from storage/flags/
-RewriteRule ^storage/flags/[a-z]{2}\.webp$ - [L]
-
-# Admin panel — no rewriting
+RewriteRule ^list/?$ list/index.php [L,QSA]
+RewriteRule ^list/(dashboard|sites|users|settings|stats|session|logout)/?$ list/$1.php [L,QSA]
 RewriteRule ^list/ - [L]
 
-# Everything else → index.php (tracker endpoint)
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.*)$ index.php [L,QSA]
+RewriteRule ^api/collect$ index.php [L,QSA]
 
-# Hide from search engines
 <IfModule mod_headers.c>
     Header set X-Robots-Tag "noindex, nofollow"
 </IfModule>

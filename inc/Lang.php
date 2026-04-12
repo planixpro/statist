@@ -12,6 +12,7 @@
 class Lang
 {
     private static array  $strings  = [];
+    private static array  $fallback = [];
     private static string $locale   = 'en';
     private static string $langDir  = '';
 
@@ -19,22 +20,26 @@ class Lang
     private const NAMES = [
         'en' => 'English',
         'ru' => 'Русский',
-        'bg' => 'Български',		
+        'bg' => 'Български',
+        'uk' => 'Українська',
+
         'de' => 'Deutsch',
         'es' => 'Español',
         'fr' => 'Français',
         'it' => 'Italiano',
         'pt' => 'Português',
-        'pl' => 'Polski',
-        'tr' => 'Türkçe',
+
         'zh' => '中文',
         'ja' => '日本語',
+        'hi' => 'हिन्दी',
     ];
 
     public static function load(string $locale): void
     {
         self::$langDir = dirname(__DIR__) . '/lang/';
-        $locale        = preg_replace('/[^a-z]/', '', strtolower($locale));
+
+        // sanitize locale
+        $locale = preg_replace('/[^a-z]/', '', strtolower($locale));
 
         $file = self::$langDir . $locale . '.json';
         if (!file_exists($file)) {
@@ -42,15 +47,40 @@ class Lang
             $file   = self::$langDir . 'en.json';
         }
 
-        self::$locale  = $locale;
-        $contents = file_exists($file) ? file_get_contents($file) : false;
+        self::$locale = $locale;
+
+        // load selected locale
+        $contents = @file_get_contents($file);
         self::$strings = $contents ? (json_decode($contents, true) ?? []) : [];
+
+        // load fallback (en)
+        if ($locale !== 'en') {
+            $fallbackFile = self::$langDir . 'en.json';
+            $fallbackContents = @file_get_contents($fallbackFile);
+
+            self::$fallback = $fallbackContents
+                ? (json_decode($fallbackContents, true) ?? [])
+                : [];
+        } else {
+            self::$fallback = self::$strings;
+        }
     }
 
     public static function get(string $key, ...$args): string
     {
-        $str = self::$strings[$key] ?? $key;
-        return $args ? vsprintf($str, $args) : $str;
+        $str = self::$strings[$key]
+            ?? self::$fallback[$key]
+            ?? $key;
+
+        if (!$args) {
+            return $str;
+        }
+
+        try {
+            return vsprintf($str, $args);
+        } catch (\Throwable $e) {
+            return $str;
+        }
     }
 
     public static function locale(): string
@@ -62,7 +92,7 @@ class Lang
      * Returns locales that have a lang/*.json file,
      * merged with known display names.
      *
-     * @return array<string, string>  ['en' => 'English', 'ru' => 'Русский', ...]
+     * @return array<string, string>
      */
     public static function available(): array
     {
@@ -71,10 +101,18 @@ class Lang
         }
 
         $out = [];
+
         foreach (glob(self::$langDir . '*.json') as $file) {
             $code = basename($file, '.json');
+
+            // allow only 2-letter locale codes
+            if (!preg_match('/^[a-z]{2}$/', $code)) {
+                continue;
+            }
+
             $out[$code] = self::NAMES[$code] ?? strtoupper($code);
         }
+
         ksort($out);
         return $out;
     }

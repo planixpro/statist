@@ -1,69 +1,66 @@
 <?php
 
-/**
- * BotDetector — two-stage bot/spam filter.
- *
- * Stage 1 (isBot):  UA-string check at request time — fast, no DB needed.
- * Stage 2 (isSuspiciousSession): called from SessionService on session_end /
- *          heartbeat absence to flag zero-second / datacenter sessions.
- */
 class BotDetector
 {
-    // ------------------------------------------------------------------ UA markers
     private const BOT_MARKERS = [
-        // Search engines
-        'googlebot', 'bingbot', 'yandex', 'duckduckbot', 'baiduspider',
-        'sogou', 'exabot', 'semrushbot', 'ahrefsbot', 'mj12bot', 'dotbot',
-        'petalbot', 'slurp',
-        // Generic keywords
-        'bot', 'crawl', 'spider',
-        // Social / preview
+        'bot', 'crawl', 'spider', 'slurp',
+        'googlebot', 'bingbot', 'yandex', 'duckduckbot',
+        'baiduspider', 'sogou', 'exabot', 'semrushbot',
+        'ahrefsbot', 'mj12bot', 'dotbot', 'petalbot',
+
         'facebookexternalhit', 'twitterbot', 'linkedinbot',
         'whatsapp', 'telegrambot', 'vkshare',
-        // Monitoring / tools
+
         'lighthouse', 'pingdom', 'uptimerobot', 'statuscake',
         'wget', 'curl', 'python-requests', 'go-http-client',
-        'java/', 'okhttp', 'httpclient', 'axios/', 'node-fetch',
-        'scrapy', 'phantomjs', 'headless',
+        'java/', 'okhttp', 'httpclient',
     ];
 
-    // ------------------------------------------------------------------ Known datacenter ASN/IP ranges (CIDR)
-    // Singapore / Vultr / DigitalOcean / Linode clusters that generate fake traffic.
-    // Extend freely — these are the most common offenders seen in the wild.
-    private const SUSPECT_RANGES = [
-        // Vultr Singapore
-        '45.32.0.0/13',
-        '108.61.0.0/16',
-        // DigitalOcean
-        '143.198.0.0/16',
-        '159.89.0.0/16',
-        '178.128.0.0/16',
-        // Linode / Akamai
-        '139.162.0.0/16',
-        '172.104.0.0/14',
-        // OVH SG
-        '51.79.0.0/16',
-        '51.161.0.0/16',
-        // Alibaba Cloud SG
-        '8.209.0.0/16',
-        '47.74.0.0/16',
-        // Tencent Cloud SG
-        '43.153.0.0/16',
-        '43.156.0.0/14',
+    private const HEADLESS_MARKERS = [
+        'headlesschrome',
+        'puppeteer',
+        'playwright',
+        'phantomjs',
+        'selenium',
     ];
 
-    // ------------------------------------------------------------------ Stage 1: UA check
+    private const SCAN_PATH_PATTERNS = [
+        '~^/(profile|user|member)/\d+$~i',
+        '~^/(profile|user|member)/[a-z0-9\-_]{8,}$~i',
+        '~/\d{7,}~',
+    ];
+
+    private const SUSPICIOUS_PROVIDERS = [
+        'amazon',
+        'aws',
+        'amazon technologies',
+        'digitalocean',
+        'ovh',
+        'google cloud',
+        'microsoft azure',
+        'linode',
+        'hetzner',
+        'contabo',
+        'vultr',
+        'oracle cloud',
+        'alibaba cloud',
+        'tencent cloud',
+    ];
+
+    // ----------------------------------------------------------------
+    // Базовые детекторы
+    // ----------------------------------------------------------------
 
     public static function isBot(string $ua): bool
     {
-        if (empty($ua)) {
-            return true; // empty UA — almost certainly a script
+        if ($ua === '') {
+            return true;
         }
 
-        $lower = strtolower($ua);
+        $ua = mb_strtolower($ua);
 
         foreach (self::BOT_MARKERS as $marker) {
-            if (str_contains($lower, $marker)) {
+            if (str_contains($ua, $marker)) {
                 return true;
             }
         }
@@ -71,60 +68,238 @@ class BotDetector
         return false;
     }
 
-    // ------------------------------------------------------------------ Stage 2: Session-level heuristics
-
-    /**
-     * Returns true when a session looks like bot/spam traffic.
-     *
-     * Checks:
-     *  - Duration ≤ 1 second with no heartbeat (is_valid = 0)
-     *  - IP falls inside a known datacenter range
-     *
-     * @param array $session  Row from the sessions table or equivalent array:
-     *                        ['started_at', 'last_activity', 'is_valid', 'ip']
-     */
-    public static function isSuspiciousSession(array $session): bool
+    public static function isHeadless(string $ua): bool
     {
-        $start    = strtotime($session['started_at']    ?? '') ?: 0;
-        $last     = strtotime($session['last_activity'] ?? '') ?: 0;
-        $isValid  = (int)($session['is_valid'] ?? 0);
-        $ip       = $session['ip'] ?? '';
+        if ($ua === '') {
+            return false;
+        }
 
-        // Zero/one-second session without a heartbeat
-        $duration = $last - $start;
-        if ($duration <= 1 && $isValid === 0) {
+        $ua = mb_strtolower($ua);
+
+        foreach (self::HEADLESS_MARKERS as $marker) {
+            if (str_contains($ua, $marker)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static function isWeirdUA(string $ua): bool
+    {
+        if ($ua === '') {
             return true;
         }
 
-        // IP in known datacenter range
-        if ($ip && self::isDatacenterIp($ip)) {
+        $ual = mb_strtolower($ua);
+
+        if (!str_contains($ual, 'mozilla/5.0')) {
+            return true;
+        }
+
+        $hasWebkit = str_contains($ual, 'applewebkit');
+        $hasGecko  = str_contains($ual, 'gecko/');
+        $hasChrome = str_contains($ual, 'chrome/');
+        $hasSafari = str_contains($ual, 'safari/');
+
+        if ($hasChrome && (!$hasWebkit || !$hasSafari)) {
+            return true;
+        }
+
+        if (!$hasWebkit && !$hasGecko) {
             return true;
         }
 
         return false;
     }
 
-    // ------------------------------------------------------------------ Helpers
-
-    private static function isDatacenterIp(string $ip): bool
+    public static function isFakeChrome(string $ua): bool
     {
-        // IPv6 — skip range check for now (extend later)
-        if (str_contains($ip, ':')) {
+        return (bool)preg_match('~Chrome/\d+\.0\.0\.0~i', $ua);
+    }
+
+    public static function isStaleChrome(string $ua): bool
+    {
+        if (preg_match('~Chrome/(\d+)~i', $ua, $m)) {
+            $version = (int)$m[1];
+            return $version > 0 && $version < 110;
+        }
+
+        return false;
+    }
+
+    public static function isScanLikePath(string $path): bool
+    {
+        if ($path === '') {
             return false;
         }
 
-        $long = ip2long($ip);
-        if ($long === false) {
-            return false;
-        }
-
-        foreach (self::SUSPECT_RANGES as $cidr) {
-            [$net, $bits] = explode('/', $cidr);
-            $mask    = ~((1 << (32 - (int)$bits)) - 1);
-            $netLong = ip2long($net);
-            if (($long & $mask) === ($netLong & $mask)) {
+        foreach (self::SCAN_PATH_PATTERNS as $pattern) {
+            if (preg_match($pattern, $path)) {
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    public static function isBadFingerprint(?string $fp): bool
+    {
+        $fp = trim((string)$fp);
+        return $fp === '' || mb_strlen($fp) < 8;
+    }
+
+    public static function isBadScreen(?string $screen, string $ua = ''): bool
+    {
+        $screen = trim((string)$screen);
+        $ual    = mb_strtolower($ua);
+
+        if ($screen === '' || !preg_match('~^\d{2,5}x\d{2,5}$~', $screen)) {
+            return true;
+        }
+
+        [$w, $h] = array_map('intval', explode('x', $screen, 2));
+
+        if ($w < 240 || $h < 240) {
+            return true;
+        }
+
+        if (str_contains($ual, 'windows') && $w < 700) {
+            return true;
+        }
+
+        return false;
+    }
+
+    public static function isSuspiciousProvider(?string $provider): bool
+    {
+        $provider = mb_strtolower(trim((string)$provider));
+        if ($provider === '') {
+            return false;
+        }
+
+        foreach (self::SUSPICIOUS_PROVIDERS as $needle) {
+            if (str_contains($provider, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // ----------------------------------------------------------------
+    // Scoring
+    // ----------------------------------------------------------------
+
+    public static function score(array $ctx): int
+    {
+        $ua        = (string)($ctx['ua'] ?? '');
+        $path      = (string)($ctx['path'] ?? '');
+        $referrer  = (string)($ctx['referrer'] ?? '');
+        $fp        = (string)($ctx['fp'] ?? '');
+        $screen    = (string)($ctx['screen'] ?? '');
+        $js        = (int)($ctx['js'] ?? 0);
+        $events    = max(0, (int)($ctx['events_count'] ?? 0));
+        $duration  = max(0, (int)($ctx['duration'] ?? 0));
+        $provider  = (string)($ctx['provider'] ?? '');
+
+        $score = 0;
+
+        // --- Явные боты ---
+
+        if (self::isBot($ua)) {
+            $score += 20;
+        }
+
+        if (self::isHeadless($ua)) {
+            $score += 15;
+        }
+
+        // --- JS ---
+        if ($js !== 1) {
+            $score += 6;
+        }
+
+        // --- UA (ослаблено) ---
+
+        if (self::isWeirdUA($ua)) {
+            $score += 2;
+        }
+
+        if (self::isFakeChrome($ua)) {
+            $score += 3;
+        }
+
+        if (self::isStaleChrome($ua)) {
+            $score += 2;
+        }
+
+        // --- Поведение ---
+
+        if ($events <= 1 && $duration < 5) {
+            $score += 3;
+        }
+
+        // --- FP (фикс: не штрафуем пустой) ---
+
+        if ($fp !== '' && self::isBadFingerprint($fp)) {
+            $score += 3;
+        }
+
+        // --- Screen (ослаблено) ---
+
+        if (self::isBadScreen($screen, $ua)) {
+            $score += 2;
+        }
+
+        // --- Path ---
+
+        if (self::isScanLikePath($path) && $referrer === '') {
+            $score += 4;
+        }
+
+        // --- Provider ---
+
+        if (self::isSuspiciousProvider($provider)) {
+            $score += 3;
+        }
+
+        return min($score, 100);
+    }
+
+    public static function classify(int $score): string
+    {
+        if ($score >= 15) {
+            return 'bot';
+        }
+
+        if ($score >= 8) {
+            return 'suspicious';
+        }
+
+        return 'good';
+    }
+
+    // ----------------------------------------------------------------
+    // Realtime block
+    // ----------------------------------------------------------------
+
+    public static function shouldBlockRealtime(array $ctx): bool
+    {
+        $ua   = (string)($ctx['ua'] ?? '');
+        $js   = (int)($ctx['js'] ?? 0);
+        $path = (string)($ctx['path'] ?? '');
+
+        if (self::isBot($ua)) {
+            return true;
+        }
+
+        if (self::isHeadless($ua)) {
+            return true;
+        }
+
+        if ($js !== 1 && self::isScanLikePath($path)) {
+            return true;
         }
 
         return false;
